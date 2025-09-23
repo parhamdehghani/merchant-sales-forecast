@@ -19,8 +19,7 @@ def get_or_create_spark_session(app_name="MerchantSalesForecast") -> SparkSessio
         .set("spark.sql.shuffle.partitions", "200")
 
     # For local development, use 'local[*]' master
-    # In a production Docker environment, this might be overridden by a Kubernetes/YARN master
-    # For this assessment, 'local[*]' is appropriate.
+    # In a production Docker environment, this would be overridden by a Kubernetes/YARN master
     conf = conf.setMaster("local[*]")
 
     spark = SparkSession.builder \
