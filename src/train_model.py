@@ -3,6 +3,8 @@ import shutil
 from src.spark_utils import get_or_create_spark_session
 from src.data_processing import load_data, preprocess_transactions, prepare_for_forecasting
 from src.forecasting_model import ForecastingModel
+from pyspark.ml.evaluation import RegressionEvaluator
+from pyspark.sql.functions import col
 
 if __name__ == "__main__":
     # Define paths
@@ -29,16 +31,56 @@ if __name__ == "__main__":
         historical_data_for_forecasting.cache() # Cache for training
         print("Data loaded and preprocessed for training.")
 
-        # 3. Initialize and Train Forecasting Model
+        # 3. Perform Time-based Train-Test Split (70% train, 30% test)
+        print("Performing time-based train-test split...")
+        
+        # Get all unique months and sort them
+        all_unique_months = historical_data_for_forecasting.select("transaction_month").distinct().orderBy("transaction_month").collect()
+        num_total_months = len(all_unique_months)
+        num_test_months = int(num_total_months * 0.30) # 30% for test set
+        
+        # Determine the cutoff month
+        # If num_test_months is 0, this logic needs to be robust (e.g., if data is too small)
+        if num_test_months == 0 and num_total_months > 0:
+            # Ensure at least one month in test set if data exists
+            test_cutoff_month = all_unique_months[-1].transaction_month
+        elif num_test_months == 0 and num_total_months == 0:
+            raise ValueError("No data available for train-test split.")
+        else:
+            test_cutoff_month_index = num_total_months - num_test_months
+            test_cutoff_month = all_unique_months[test_cutoff_month_index].transaction_month
+        
+        training_df = historical_data_for_forecasting.filter(col("transaction_month") < test_cutoff_month)
+        test_df = historical_data_for_forecasting.filter(col("transaction_month") >= test_cutoff_month)
+        
+        print(f"Training data contains {training_df.count()} records up to {test_cutoff_month.strftime('%Y%m')}")
+        print(f"Test data contains {test_df.count()} records from {test_cutoff_month.strftime('%Y%m')} onwards")
+        
+        # 4. Initialize and Train Forecasting Model
         print("Training forecasting model...")
         forecasting_model_instance = ForecastingModel()
-        forecasting_model_instance.train(spark, historical_data_for_forecasting)
+        forecasting_model_instance.train(spark, training_df) # Train on training_df
         print("Forecasting model training complete.")
 
-        # 4. Save the trained model
+        # 5. Save the trained model
         print(f"Saving trained model to {MODEL_SAVE_PATH}...")
         forecasting_model_instance.save(spark, MODEL_SAVE_PATH)
         print("Model saved successfully.")
+
+        # 6. Evaluate the trained model on the TEST set
+        print("Evaluating the trained model on the test set...")
+        loaded_model_instance = ForecastingModel.load(spark, MODEL_SAVE_PATH)
+        
+        # Generate features on the test data using the loaded model's feature generation logic
+        df_with_features_for_eval = loaded_model_instance._generate_features(spark, test_df) # Evaluate on test_df
+        
+        # Make predictions using the loaded pipeline model
+        predictions = loaded_model_instance.model.transform(df_with_features_for_eval)
+        
+        # Evaluate predictions
+        evaluator = RegressionEvaluator(labelCol="sales_amount_actual", predictionCol="prediction", metricName="rmse")
+        rmse = evaluator.evaluate(predictions)
+        print(f"Model evaluation complete. RMSE on test data: {rmse}")
 
     except Exception as e:
         print(f"An error occurred during model training: {e}")
