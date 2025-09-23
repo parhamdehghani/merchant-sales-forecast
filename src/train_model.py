@@ -1,4 +1,5 @@
 import os
+import shutil
 from src.spark_utils import get_or_create_spark_session
 from src.data_processing import load_data, preprocess_transactions, prepare_for_forecasting
 from src.forecasting_model import ForecastingModel
@@ -8,6 +9,13 @@ if __name__ == "__main__":
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     DATA_FILE_PATH = os.path.join(BASE_DIR, "..", "monthly_transactions.csv") 
     MODEL_SAVE_PATH = os.path.join(BASE_DIR, "..", "models", "forecasting_pipeline_model") 
+
+    # Ensure the model save directory exists and is empty
+    if os.path.exists(MODEL_SAVE_PATH):
+        import shutil
+        shutil.rmtree(MODEL_SAVE_PATH)
+        print(f"Removed existing model directory: {MODEL_SAVE_PATH}")
+    os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
 
     # 1. Initialize Spark Session
     spark = get_or_create_spark_session()

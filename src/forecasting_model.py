@@ -62,7 +62,7 @@ class ForecastingModel:
         df_with_features = df_with_features.withColumn("month_of_year", month(col("transaction_month")))
         df_with_features = df_with_features.withColumn("year", year(col("transaction_month")))
 
-        # Drop rows with nulls introduced by lagging (i.e., the first few months for each merchant)
+        # Drop rows with nulls introduced by lagging 
         # For training, we only need rows where all features are present
         df_with_features = df_with_features.dropna(subset=self.feature_cols)
 
@@ -93,12 +93,12 @@ class ForecastingModel:
 
         # 5. Define ParamGrid for hyperparameter tuning
         param_grid = ParamGridBuilder() \
-            .addGrid(xgb.max_depth, [5, 10, 15]) \
-            .addGrid(xgb.n_estimators, [100, 300, 500]) \
+            .addGrid(xgb.max_depth, [5, 10]) \
+            .addGrid(xgb.n_estimators, [300, 500]) \
             .build()
 
         # 6. Define an evaluator
-        # We'll use RMSE (Root Mean Squared Error) as a common metric for regression.
+        # We'll use RMSE as metric for regression.
         evaluator = RegressionEvaluator(labelCol="sales_amount_actual", predictionCol="prediction", metricName="rmse")
 
         # 7. Set up CrossValidator
@@ -150,8 +150,6 @@ class ForecastingModel:
         
         # Re-extract feature_cols from the loaded pipeline if possible or store them with the model
         # For simplicity, assuming feature_cols remain consistent for a given model version.
-        # In a more complex scenario, feature_cols would be saved as part of model metadata.
-        # For now, we can re-derive them from the first stage if it's a VectorAssembler.
         for stage in loaded_pipeline_model.stages:
             if isinstance(stage, VectorAssembler):
                 instance.feature_cols = stage.getInputCols()
