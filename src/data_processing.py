@@ -113,7 +113,13 @@ def prepare_for_forecasting(spark, df):
     ).select(
         full_series_df.anonymous_uu_id,
         full_series_df.all_month.alias("transaction_month"), # Overwrite with transaction_month
-        col("sales_amount").alias("sales_amount_actual")
+        col("sales_amount").alias("sales_amount_actual"),
+        col("currency_code"), # Add currency_code
+        col("currency_code_indexed"), # Add currency_code_indexed
+        col("currency_code_encoded"), # Add currency_code_encoded
+        col("country_code"), # Add country_code
+        col("country_code_indexed"), # Add country_code_indexed
+        col("country_code_encoded") # Add country_code_encoded
     ).fillna(0, subset=["sales_amount_actual"]) # Fill missing months with 0 sales
 
     return joined_df.orderBy("anonymous_uu_id", "transaction_month") # Order by transaction_month
