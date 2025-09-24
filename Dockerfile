@@ -12,6 +12,10 @@ RUN export ARCH=$(dpkg --print-architecture) && \
 ENV JAVA_HOME="/usr/lib/jvm/java-11-openjdk"
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
+# Force IPv4 for Java/Spark to avoid IPv6 issues in Cloud Run
+ENV JAVA_OPTS="-Djava.net.preferIPv4Stack=true -Djava.net.preferIPv4Addresses=true"
+ENV SPARK_SUBMIT_OPTS="-Djava.net.preferIPv4Stack=true"
+
 # Set environment variables for Spark (needed by PySpark)
 # SPARK_HOME points to the PySpark installation directory for Python 3.10
 ENV SPARK_HOME="/usr/local/lib/python3.10/site-packages/pyspark"
