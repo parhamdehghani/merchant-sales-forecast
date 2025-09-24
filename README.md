@@ -9,7 +9,7 @@ A production-ready Machine Learning system for forecasting merchant sales revenu
 ### API Endpoints
 
 #### 1. Sales Forecasting
-    ```bash
+```bash
 POST /forecast
 Content-Type: application/json
 
@@ -27,7 +27,7 @@ Content-Type: application/json
 ```
 
 #### 2. Cash Advance Eligibility
-    ```bash
+```bash
 POST /advance_offer
 Content-Type: application/json
 
@@ -366,13 +366,13 @@ def calculate_advance_amount(self, merchant_id, forecasted_sales):
 ### Local Development
 
 #### 1. Environment Setup
-    ```bash
+```bash
 # Activate churn-env environment (Python 3.10.18)
 conda activate churn-env
 
 # Install dependencies with exact versions
-    pip install -r requirements.txt
-    ```
+pip install -r requirements.txt
+```
 
 #### 2. Model Training
 ```bash
@@ -538,11 +538,11 @@ tests/test_api.py                  # API integration tests
 ## 👨‍💻 Development
 
 ### Requirements
-- Python 3.10.18 (churn-env compatible)
+- Python 3.10.18 
 - PySpark 3.3.2
-- Java 11 (for Spark)
-- Docker (for containerization)
-- Google Cloud SDK (for deployment)
+- Java 11 
+- Docker 
+- Google Cloud SDK 
 
 ### Local Setup
 ```bash
@@ -556,7 +556,7 @@ python main.py
 
 ## 📈 Technical Highlights
 
-### Senior ML Engineering Practices
+### Employed MLOps Practices
 ✅ **Production ML Pipeline:** Offline training + Online inference  
 ✅ **Scalable Architecture:** PySpark for distributed processing  
 ✅ **Model Validation:** Cross-validation with hyperparameter tuning  
