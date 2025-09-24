@@ -71,6 +71,19 @@ merchant_D,USD,US,202212,1000.0,10
 class MockForecastingModel:
     """Mock forecasting model for testing that returns simple predictions without complex PySpark operations."""
     
+    def _get_mock_predictions(self, merchant_id):
+        """Helper method to get mock predictions based on merchant ID."""
+        if merchant_id == "merchant_A":
+            return [17000.0, 17500.0, 18000.0, 18500.0, 19000.0, 19500.0]
+        elif merchant_id == "merchant_B":
+            return [1100.0, 1150.0, 1200.0, 1250.0, 1300.0, 1350.0]
+        elif merchant_id == "merchant_C":
+            return [100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+        elif merchant_id == "merchant_D":
+            return [800.0, 700.0, 600.0, 500.0, 400.0, 300.0]
+        else:
+            return [1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0]
+    
     def predict(self, spark, historical_df, months_to_forecast=6):
         # Simple mock that returns dummy predictions
         from pyspark.sql.types import StructType, StructField, DoubleType
@@ -78,22 +91,16 @@ class MockForecastingModel:
         
         # Return mock predictions based on merchant
         merchant_id = historical_df.select("anonymous_uu_id").first().anonymous_uu_id
-        
-        if merchant_id == "merchant_A":
-            predictions = [17000.0, 17500.0, 18000.0, 18500.0, 19000.0, 19500.0]
-        elif merchant_id == "merchant_B":
-            predictions = [1100.0, 1150.0, 1200.0, 1250.0, 1300.0, 1350.0]
-        elif merchant_id == "merchant_C":
-            predictions = [100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
-        elif merchant_id == "merchant_D":
-            predictions = [800.0, 700.0, 600.0, 500.0, 400.0, 300.0]
-        else:
-            predictions = [1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0]
+        predictions = self._get_mock_predictions(merchant_id)
         
         # Create DataFrame with predictions
         schema = StructType([StructField("prediction", DoubleType(), True)])
         rows = [Row(prediction=pred) for pred in predictions]
         return spark.createDataFrame(rows, schema)
+    
+    def predict_fast(self, spark, historical_df, months_to_forecast=6):
+        """Mock implementation of predict_fast method - same as predict for testing."""
+        return self.predict(spark, historical_df, months_to_forecast)
 
 @pytest.fixture(scope="module") 
 def client_with_data(setup_test_data):
