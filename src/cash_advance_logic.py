@@ -1,5 +1,5 @@
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, sum, avg, count, when, datediff, last_day, max, lit, date_sub, lag, row_number, add_months, expr, desc
+from pyspark.sql.functions import col, avg, count, when, datediff, last_day, max, lit, date_sub, lag, row_number, add_months, expr, desc
 from pyspark.sql.window import Window
 from datetime import datetime
 
@@ -84,10 +84,10 @@ class CashAdvanceCalculator:
 
         # 2. Average Monthly Sales (Last 12 Months)
         # Determine the start date for the last 12 months using add_months for precision
-        twelve_months_ago_dt = add_months(as_of_date, -12)
+        twelve_months_ago_dt = add_months(lit(as_of_date), -12)
 
         last_12_months_sales = historical_data.filter(
-            (col("transaction_month") >= twelve_months_ago_dt) & (col("transaction_month") <= as_of_date)
+            (col("transaction_month") >= twelve_months_ago_dt) & (col("transaction_month") <= lit(as_of_date))
         ).groupBy("anonymous_uu_id").agg(
             avg("sales_amount_actual").alias("avg_sales_last_12_months"),
             count(when(col("sales_amount_actual") > 0, True)).alias("months_in_last_12_with_sales") # Count months with positive sales
@@ -95,11 +95,11 @@ class CashAdvanceCalculator:
 
         # 3. Sales Trend (Last 6 Months: Recent 3 vs. Prior 3)
         # Define precise month boundaries for 3-month segments
-        six_months_ago_dt = add_months(as_of_date, -6)
-        three_months_ago_dt = add_months(as_of_date, -3)
+        six_months_ago_dt = add_months(lit(as_of_date), -6)
+        three_months_ago_dt = add_months(lit(as_of_date), -3)
 
         recent_3_months_sales = historical_data.filter(
-            (col("transaction_month") >= three_months_ago_dt) & (col("transaction_month") <= as_of_date)
+            (col("transaction_month") >= three_months_ago_dt) & (col("transaction_month") <= lit(as_of_date))
         ).groupBy("anonymous_uu_id").agg(
             avg("sales_amount_actual").alias("avg_sales_recent_3_months")
         )
@@ -113,7 +113,7 @@ class CashAdvanceCalculator:
         # Join all features
         features_df = last_12_months_sales.join(recent_3_months_sales, "anonymous_uu_id", "left_outer") \
                                           .join(prior_3_months_sales, "anonymous_uu_id", "left_outer") \
-                                          .join(latest_consecutive_counts, "anonymous_uu_id", "left_outer")
+                                          .join(latest_consecutive_months_with_sales, "anonymous_uu_id", "left_outer")
 
         # Fill NaNs for averages and counts that might arise from missing historical data
         features_df = features_df.fillna(0, subset=["avg_sales_last_12_months", "avg_sales_recent_3_months",
