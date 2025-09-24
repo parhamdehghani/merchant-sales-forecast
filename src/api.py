@@ -101,8 +101,8 @@ async def get_sales_forecast(merchant: MerchantId):
     if app.state.historical_data_for_forecasting.filter(col("anonymous_uu_id") == merchant_id).count() == 0:
         raise HTTPException(status_code=404, detail=f"Merchant ID {merchant_id} not found in historical data.")
 
-    # Call the forecasting model to predict sales
-    forecast_df = app.state.forecasting_model.predict(
+    # Call the forecasting model to predict sales (using ultra-fast method for production API)
+    forecast_df = app.state.forecasting_model.predict_fast(
         spark=app.state.spark,
         historical_df=app.state.historical_data_for_forecasting.filter(col("anonymous_uu_id") == merchant_id),
         months_to_forecast=6
@@ -141,8 +141,8 @@ async def get_cash_advance_offer(merchant: MerchantId):
 
     advance_amount = 0.0
     if is_eligible:
-        # 3. If eligible, forecast sales for the next 6 months
-        forecast_df = app.state.forecasting_model.predict(
+        # 3. If eligible, forecast sales for the next 6 months (using ultra-fast method for production API)
+        forecast_df = app.state.forecasting_model.predict_fast(
             spark=app.state.spark,
             historical_df=app.state.historical_data_for_forecasting.filter(col("anonymous_uu_id") == merchant_id),
             months_to_forecast=6

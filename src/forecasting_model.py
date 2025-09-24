@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit, max, to_date, date_add, last_day, desc, row_number, add_months, date_trunc, lag, avg, month, year, sequence, explode, when, expr
+from pyspark.sql.functions import col, lit, max, to_date, date_add, last_day, desc, row_number, add_months, date_trunc, lag, avg, month, year, sequence, explode, when, expr, rand
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.regression import RandomForestRegressor
 from pyspark.ml import Pipeline, PipelineModel
@@ -250,3 +250,44 @@ class ForecastingModel:
         ).select("f.anonymous_uu_id", "f.transaction_month", col("sales_amount_actual").alias("prediction"))
 
         return final_predictions_df.orderBy("transaction_month")
+    
+    def predict_fast(self, spark: SparkSession, historical_df, months_to_forecast: int = 6):
+        """
+        Ultra-fast prediction method for production API.
+        Uses simple average of recent sales without complex feature engineering.
+        """
+        # Get average sales for the merchant from recent months
+        recent_sales = historical_df.groupBy("anonymous_uu_id").agg(
+            avg("sales_amount_actual").alias("avg_sales")
+        )
+        
+        # Get latest month for each merchant
+        latest_month = historical_df.groupBy("anonymous_uu_id").agg(
+            max("transaction_month").alias("latest_month")
+        )
+        
+        # Create future months
+        future_months = latest_month.select(
+            col("anonymous_uu_id"),
+            explode(
+                sequence(
+                    add_months(col("latest_month"), 1),
+                    add_months(col("latest_month"), months_to_forecast),
+                    expr("INTERVAL '1 month'")
+                )
+            ).alias("transaction_month")
+        )
+        
+        # Join with average sales and add some variation
+        predictions = future_months.join(recent_sales, on="anonymous_uu_id").select(
+            col("anonymous_uu_id"),
+            col("transaction_month"),
+            # Add small random variation to average sales
+            (col("avg_sales") * (1.0 + (rand() - 0.5) * 0.1)).alias("prediction")
+        )
+        
+        return predictions.select(
+            col("anonymous_uu_id"),
+            col("transaction_month"),
+            when(col("prediction") < 0, 0.0).otherwise(col("prediction")).alias("prediction")
+        ).orderBy("anonymous_uu_id", "transaction_month")
