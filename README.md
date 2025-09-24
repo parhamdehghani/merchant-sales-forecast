@@ -4,7 +4,8 @@ A production-ready Machine Learning system for forecasting merchant sales revenu
 
 ## 🚀 Live API Endpoint
 
-**Base URL:** `https://lightspeed-ml-api-655098395937.us-central1.run.app`
+**Base URL:** `https://lightspeed-ml-api-655098395937.us-central1.run.app` 
+(takes some time to load for the first time as endpoint is serverless)
 
 ### API Endpoints
 
