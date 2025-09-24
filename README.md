@@ -11,12 +11,9 @@ A production-ready Machine Learning system for forecasting merchant sales revenu
 
 #### 1. Sales Forecasting
 ```bash
-POST /forecast
-Content-Type: application/json
-
-{
-  "anonymous_uu_id": "016f2b27-4db1-405c-84f5-755c100890d9"
-}
+curl -X POST "https://lightspeed-ml-api-655098395937.us-central1.run.app/forecast" \
+  -H "Content-Type: application/json" \
+  -d '{"anonymous_uu_id": "016f2b27-4db1-405c-84f5-755c100890d9"}'
 ```
 
 **Response:**
@@ -29,12 +26,9 @@ Content-Type: application/json
 
 #### 2. Cash Advance Eligibility
 ```bash
-POST /advance_offer
-Content-Type: application/json
-
-{
-  "anonymous_uu_id": "016f2b27-4db1-405c-84f5-755c100890d9"
-}
+curl -X POST "https://lightspeed-ml-api-655098395937.us-central1.run.app/advance_offer" \
+  -H "Content-Type: application/json" \
+  -d '{"anonymous_uu_id": "016f2b27-4db1-405c-84f5-755c100890d9"}'
 ```
 
 **Response:**
