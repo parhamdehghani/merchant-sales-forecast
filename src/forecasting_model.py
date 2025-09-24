@@ -158,36 +158,35 @@ class ForecastingModel:
         print(f"Forecasting model loaded from {path}")
         return instance
 
-    def predict(self, spark: SparkSession, merchant_id: str, historical_sales_df, num_months: int = 6):
+    def predict(self, spark: SparkSession, historical_df, months_to_forecast: int = 6):
         """
-        Predicts the monthly sales revenue for a specific merchant for the next `num_months`.
+        Predicts the monthly sales revenue for a specific merchant for the next `months_to_forecast`.
         This method now uses a more PySpark-idiomatic iterative forecasting approach
         to avoid costly `collect()` and `createDataFrame()` operations in a loop.
 
         Args:
             spark (SparkSession): The active SparkSession.
-            merchant_id (str): The ID of the merchant to forecast for.
-            historical_sales_df (DataFrame): The historical sales data for *all* merchants,
-                                             preprocessed by `data_processing.prepare_for_forecasting`.
-            num_months (int): The number of months to forecast into the future.
+            historical_df (DataFrame): The historical sales data for the merchant(s) to forecast for,
+                                           preprocessed by `data_processing.prepare_for_forecasting`.
+            months_to_forecast (int): The number of months to forecast into the future.
 
         Returns:
-            list: A list of predicted sales amounts for the next `num_months`.
+            DataFrame: A DataFrame with predicted sales amounts for the next `months_to_forecast`.
         """
         if self.model is None:
             raise RuntimeError("Model has not been trained or loaded yet. Call train() or load() first.")
 
         # Ensure the historical data is ordered by month
-        historical_sales_df = historical_sales_df.orderBy("anonymous_uu_id", "transaction_month")
+        historical_df = historical_df.orderBy("anonymous_uu_id", "transaction_month")
 
         # Get the latest transaction month from the historical data for each merchant
-        latest_month_per_merchant = historical_sales_df.groupBy("anonymous_uu_id") \
+        latest_month_per_merchant = historical_df.groupBy("anonymous_uu_id") \
                                                       .agg(max("transaction_month").alias("latest_month"))
 
         # Generate future months for each merchant
         future_months_df = latest_month_per_merchant.withColumn(
             "future_month_sequence",
-            sequence(date_add(col("latest_month"), 1), date_add(col("latest_month"), num_months), expr("INTERVAL '1 month'"))
+            sequence(add_months(col("latest_month"), 1), add_months(col("latest_month"), months_to_forecast), expr("INTERVAL '1 month'"))
         ).withColumn("transaction_month", explode(col("future_month_sequence"))) \
          .select(
              col("anonymous_uu_id"),
@@ -203,72 +202,51 @@ class ForecastingModel:
 
         # Combine historical data and future months for all merchants
         # This unified DataFrame will be iteratively updated with predictions
-        combined_df = historical_sales_df.unionByName(future_months_df)
+        combined_df = historical_df.unionByName(future_months_df)
         combined_df = combined_df.orderBy("anonymous_uu_id", "transaction_month")
 
         # Iteratively generate features and predict
         current_df_for_prediction = combined_df
-        prediction_results = []
 
-        for i in range(1, num_months + 1):
+        for i in range(1, months_to_forecast + 1):
             # Generate features based on the current state of combined_df (historical + previous predictions)
             df_with_features = self._generate_features(spark, current_df_for_prediction)
 
             # Filter for the month we are currently predicting
-            # This is the (latest_month + i) for each merchant
-            month_to_predict = latest_month_per_merchant.withColumn("target_month", date_add(col("latest_month"), i))
+            month_to_predict_df = latest_month_per_merchant.withColumn("target_month", add_months(col("latest_month"), i))
 
             prediction_input_df = df_with_features.join(
-                month_to_predict,
-                (df_with_features.anonymous_uu_id == month_to_predict.anonymous_uu_id) &
-                (df_with_features.transaction_month == month_to_predict.target_month),
+                month_to_predict_df,
+                (df_with_features.anonymous_uu_id == month_to_predict_df.anonymous_uu_id) &
+                (df_with_features.transaction_month == month_to_predict_df.target_month),
                 "inner"
             ).select(df_with_features["*"])
 
             # Apply the trained model to get predictions for this month
-            # Ensure we only predict where sales_amount_actual is null (i.e., future months)
-            actual_prediction_input_df = prediction_input_df.filter(col("sales_amount_actual").isNull())
-
-            if actual_prediction_input_df.count() > 0:
-                predicted_df = self.model.transform(actual_prediction_input_df)
-                # Select relevant columns: merchant_id, predicted_month, prediction
-                predictions_for_this_month = predicted_df.select(
-                    col("anonymous_uu_id"),
-                    col("transaction_month"),
-                    when(col("prediction") < 0, 0.0).otherwise(col("prediction")).alias("sales_amount_predicted")
-                )
-                prediction_results.append(predictions_for_this_month)
-
-                # Update current_df_for_prediction with the new predictions
-                # Coalesce: use predicted sales if `sales_amount_actual` is null, otherwise keep actual.
-                current_df_for_prediction = current_df_for_prediction.alias("c").join(
-                    predictions_for_this_month.alias("p"),
-                    on=["anonymous_uu_id", "transaction_month"],
-                    how="left"
-                ).withColumn(
-                    "sales_amount_actual",
-                    when(col("c.sales_amount_actual").isNull(), col("p.sales_amount_predicted"))
-                    .otherwise(col("c.sales_amount_actual"))
-                ).select("c.anonymous_uu_id", "c.transaction_month", "sales_amount_actual")
-                current_df_for_prediction = current_df_for_prediction.orderBy("anonymous_uu_id", "transaction_month")
-            else:
-                # No predictions made for this month (e.g., no data for any merchant)
-                pass
-        
-        if not prediction_results:
-            return [0.0] * num_months # Return zeros if no predictions were made at all
+            predicted_df = self.model.transform(prediction_input_df)
             
-        # Union all monthly predictions and filter for the specific merchant
-        final_predictions_df = prediction_results[0]
-        for df_month in prediction_results[1:]:
-            final_predictions_df = final_predictions_df.unionByName(df_month)
+            # Clamp predictions to non-negative values
+            predictions_for_this_month = predicted_df.withColumn(
+                "prediction", when(col("prediction") < 0, 0.0).otherwise(col("prediction"))
+            )
+            
+            # Update current_df_for_prediction with the new predictions
+            current_df_for_prediction = current_df_for_prediction.alias("c").join(
+                predictions_for_this_month.select(
+                    col("anonymous_uu_id"), col("transaction_month"), col("prediction").alias("new_sales")
+                ).alias("p"),
+                on=["anonymous_uu_id", "transaction_month"],
+                how="left"
+            ).withColumn(
+                "sales_amount_actual",
+                when(col("c.sales_amount_actual").isNull(), col("p.new_sales"))
+                .otherwise(col("c.sales_amount_actual"))
+            ).select("c.*", "sales_amount_actual")
 
-        merchant_forecast = final_predictions_df.filter(col("anonymous_uu_id") == merchant_id)\
-                                                .orderBy("transaction_month")\
-                                                .select("sales_amount_predicted")\
-                                                .collect()
+        # Filter for the future months that were predicted
+        final_predictions_df = current_df_for_prediction.join(
+            future_months_df.select("anonymous_uu_id", "transaction_month").alias("f"),
+            on=["anonymous_uu_id", "transaction_month"]
+        ).select("f.anonymous_uu_id", "f.transaction_month", col("sales_amount_actual").alias("prediction"))
 
-        # Extract predictions as a list of floats
-        predictions_list = [row.sales_amount_predicted for row in merchant_forecast]
-
-        return predictions_list
+        return final_predictions_df.orderBy("transaction_month")

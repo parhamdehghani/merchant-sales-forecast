@@ -36,20 +36,20 @@ def preprocess_transactions(df):
     # Convert transaction_month to a proper date format
     # Assuming 'transaction_month' is in 'yyyyMM' format,
     # and we want to ensure it's treated as a month start for aggregation.
-    df = df.withColumn("transaction_month", to_date(col("transaction_month"), "yyyyMM"))
+    df = df.withColumn("transaction_month_dt", to_date(col("transaction_month"), "yyyyMM"))
 
     # Handle potential nulls in sales_amount by filling with 0, and ensure it's a numeric type
-    df = df.withColumn("sales_amount", col("sales_amount").cast("float"))
+    df = df.withColumn("sales_amount", col("sales_amount").cast("double"))
     df = df.fillna(0, subset=["sales_amount"])
 
     # Ensure transaction_count is numeric
-    df = df.withColumn("transaction_count", col("transaction_count").cast("int"))
+    df = df.withColumn("transaction_count", col("transaction_count").cast("long"))
     df = df.fillna(0, subset=["transaction_count"])
 
     # For forecasting, we need total monthly sales per merchant.
     # The input `monthly_transactions.csv` is already at this granularity.
     # We will sort and ensure completeness for time series.
-    df = df.orderBy("anonymous_uu_id", "transaction_month")
+    df = df.orderBy("anonymous_uu_id", "transaction_month_dt")
 
     # Handle categorical variables: currency_code and country_code
     categorical_cols = ["currency_code", "country_code"]
@@ -86,8 +86,8 @@ def prepare_for_forecasting(spark, df):
     # This step is critical for time-series forecasting to ensure no gaps.
     # Get min and max dates across all data to generate a full date range
     min_date_overall, max_date_overall = df.agg(
-        date_trunc("month", min("transaction_month")).alias("min_month"),
-        date_trunc("month", max("transaction_month")).alias("max_month")
+        date_trunc("month", min("transaction_month_dt")).alias("min_month"),
+        date_trunc("month", max("transaction_month_dt")).alias("max_month")
     ).head()
 
     # Create a DataFrame with all months in the range
@@ -106,21 +106,43 @@ def prepare_for_forecasting(spark, df):
     # Left join with existing sales data
     # We join on merchant_id and the truncated month
     joined_df = full_series_df.join(
-        df.withColumn("month_trunc", date_trunc("month", col("transaction_month"))),
+        df.withColumn("month_trunc", date_trunc("month", col("transaction_month_dt"))),
         (full_series_df.anonymous_uu_id == df.anonymous_uu_id) &
         (full_series_df.all_month == col("month_trunc")),
         "left_outer"
-    ).select(
+    )
+    
+    # Create select list based on available columns
+    select_list = [
         full_series_df.anonymous_uu_id,
-        full_series_df.all_month.alias("transaction_month"), # Overwrite with transaction_month
-        col("sales_amount").alias("sales_amount_actual"),
-        col("currency_code"), # Add currency_code
-        col("currency_code_indexed"), # Add currency_code_indexed
-        col("currency_code_encoded"), # Add currency_code_encoded
-        col("country_code"), # Add country_code
-        col("country_code_indexed"), # Add country_code_indexed
-        col("country_code_encoded") # Add country_code_encoded
-    ).fillna(0, subset=["sales_amount_actual"]) # Fill missing months with 0 sales
+        full_series_df.all_month.alias("transaction_month") # Overwrite with transaction_month
+    ]
+    
+    # Handle sales amount column (could be 'sales_amount' or 'sales_amount_actual')
+    if "sales_amount_actual" in df.columns:
+        select_list.append(col("sales_amount_actual"))
+    elif "sales_amount" in df.columns:
+        select_list.append(col("sales_amount").alias("sales_amount_actual"))
+    else:
+        # If neither exists, create a default column
+        select_list.append(lit(0.0).alias("sales_amount_actual"))
+    
+    # Add categorical columns if they exist
+    categorical_base_cols = ["currency_code", "country_code"]
+    categorical_suffix_cols = ["_indexed", "_encoded"]
+    
+    for base_col in categorical_base_cols:
+        if base_col in df.columns:
+            select_list.append(col(base_col))
+        else:
+            select_list.append(lit(None).cast("string").alias(base_col))
+            
+        for suffix in categorical_suffix_cols:
+            full_col = base_col + suffix
+            if full_col in df.columns:
+                select_list.append(col(full_col))
+    
+    joined_df = joined_df.select(*select_list).fillna(0, subset=["sales_amount_actual"]) # Fill missing months with 0 sales
 
     return joined_df.orderBy("anonymous_uu_id", "transaction_month") # Order by transaction_month
 
