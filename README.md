@@ -64,10 +64,10 @@ merchant-sales-forecast/
 │   ├── test_cash_advance_logic.py
 │   └── test_forecasting_model.py
 ├── monthly_transactions.csv      # Historical transaction data
-├── requirements.txt              # Python dependencies (exact churn-env versions)
+├── requirements.txt              # Python dependencies
 ├── Dockerfile                   # Container configuration
 ├── main.py                      # Application entry point
-└── README.md                    # This file
+└── README.md                    
 ```
 
 ## 🏗️ Architecture Overview
