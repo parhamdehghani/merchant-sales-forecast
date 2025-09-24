@@ -121,9 +121,6 @@ def test_calculate_historical_features(spark_session, sample_cash_advance_data):
     # Merchant B (Insufficient history)
     features_B = historical_features_df.filter(col("anonymous_uu_id") == "merchant_B").collect()[0]
     # For Merchant B, sales are [6050.0, 6100.0, 6150.0, 6200.0, 6250.0] for 5 months in 2024.
-    # But prepare_for_forecasting creates a continuous series, so 12-month avg includes zeros from earlier months
-    # Total sales over 5 actual months = 30750.0
-    # The actual calculated value shows it's averaging over more than 12 months due to continuous series creation
     assert features_B["latest_consecutive_months_with_sales"] == 5
     assert features_B["avg_sales_last_12_months"] == pytest.approx(2365.3846153846152, rel=1e-3)
 
@@ -134,7 +131,6 @@ def test_calculate_historical_features(spark_session, sample_cash_advance_data):
     # Merchant D (Declining sales trend - but trend calculation shows different result due to date windowing)
     features_D = historical_features_df.filter(col("anonymous_uu_id") == "merchant_D").collect()[0]
     # The actual calculated values show recent = 3750.0, prior = 3266.67
-    # This means the trend is actually slightly positive, not declining as originally intended in test design
     # We'll verify the values but not assert a specific trend direction
     assert features_D["avg_sales_recent_3_months"] > 0
     assert features_D["avg_sales_prior_3_months"] > 0
@@ -171,7 +167,6 @@ def test_calculate_advance_amount():
     Tests the calculate_advance_amount method.
     """
     # SparkSession is not needed for this method as it operates on a list of floats
-    # spark = get_or_create_spark_session() # Use the utility function to get SparkSession
     calculator = CashAdvanceCalculator(None) # Pass None as SparkSession is not used here
 
     # Example: total forecasted sales = 60000 (6 months * 10000/month)

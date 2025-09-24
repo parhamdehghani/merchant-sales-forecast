@@ -61,7 +61,6 @@ def sample_historical_data(spark_session):
     
     # Ensure transaction_month is a date type, it will be automatically cast from string to date
     # by to_date function already, this is just for clarity
-    # preprocessed_df = preprocessed_df.withColumn("transaction_month", col("transaction_month").cast(DateType())) # Removed redundant cast
     
     # Add categorical feature processing
     categorical_cols = ["currency_code", "country_code"]
